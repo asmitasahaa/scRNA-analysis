@@ -1,0 +1,173 @@
+1. Work environment set-up:
+
+# If not already done, download miniconda3 onto device 
+
+# Install bioconda 
+conda config --add channels defaults 
+conda config --add channels bioconda 
+conda config --add channels conda-forge 
+conda config --set channel_priority strict 
+
+# Create conda environment 
+conda create --name <environment name> 
+
+# Activate conda environment 
+conda activate <environment name> 
+
+2. QC: 
+
+# Install FastQC on miniconda environment 
+conda install -c bioconda fastqc 
+OR
+sudo apt install fastqc
+
+# Download sequences in FASTQ format 
+
+# Gunzip fastqc.zip file 
+gunzip /path/to/directory/file_name.fastq.gz /path/to/directory/file_name.fastq.gz # Use the second command only if you have more than one file 
+
+# Generate FastQC html files 
+fastqc /path/to/directory/file_name.fastq 
+# Open FastQC file through desired internet browser 
+# If you have firefox downloaded, use: firefox fastqc.html 
+
+3. Read trimming: 
+
+# Install fastp 
+conda install -c bioconda fastp 
+OR 
+sudo apt install fastp
+
+# If you have a single-ended sequence: 
+fastp -i /path/to/directory/file_name.fastq -o output.fastq 
+OR
+fastp -i /path/to/directory/file_name.fastq -o output.fastq --detect_adapter_for_pe 
+
+# If you have a pair-ended sequence: 
+fastp -i /path/to/directory/sequence_1.fast q -I /path/to/directory/sequence_2.fast q -o output_1.fastq -O output_2.fastq 
+OR
+fastp -i /path/to/directory/sequence_1.fastq -I /path/to/directory/sequence_2.fastq -o output_1.fastq -O output_2.fastq --detect_adapter_for_pe 
+
+4. Transcript alignment: 
+
+# Install HISAT2 
+conda install -c bioconda hisat2 
+OR 
+sudo apt install hisat2 
+
+# Download human genome index from HISAT2 manual 
+curl -O <insert link> # Download the index labeled “Genome” under GRCh38 
+
+# The downloaded files will be in a tar folder called grch38 in conda environment and will be labeled genome.1.ht2 and so on 
+
+# Extract genome index files 
+tar xvh <folder name> 
+OR 
+tar xvzf
+
+#Run alignment for pair-ended sequence: 
+hisat2 -x /path/to/grch8/folder/genome -1 /path/to/directory/trimmed_sequence_1.fastq -2 /path/to/directory/trimmed_sequence_2.fastq -S aligned_file.sam -p <specify number of threads here> dta 
+
+# Run alignment for single-ended sequence:  
+hisat2 -x /path/to/grch8/folder/genome  -U /path/to/directory/trimmed_sequence.fastq -S aligned_file.sam -p <specify number of threads here> dta 
+
+4.1. Convert SAM file format to BAM file format: 
+
+# HISAT2 always produces files in SAM file format, hence we need to convert it to BAM file before proceeding further
+
+# Install samtools 
+conda install -c bioconda samtools 
+OR
+sudo apt install samtools 
+
+# Convert BAM file to SAM file 
+samtools view -bS aligned_file.sam > aligned_file.bam 
+OR
+samtools view -@ <specify number of CPU threads here> -b -o aligned_file.sam aligned_file.bam 
+
+5. Transcript sorting: 
+
+# Sort using samtools 
+samtools sort aligned_file.bam -o output_sorted.bam 
+
+6. Transcript index: 
+
+# Index the sorted file using samtools 
+samtools index output_sorted.bam 
+
+# The output of the indexing will be in a bai file, such as: output_sorted.bam.bai 
+
+7. Transcript deduplication: 
+
+# Deduplication of the sorted file using picard
+conda install -c bioconda picard # install picard
+
+picard MarkDuplicates INPUT=/path/to/directory/output_sorted.bam OUTPUT=<output_deduplicated.bam> METRICS_FILE=dedup_metrics.txt  
+
+#Deduplication of the sorted file using sambamba
+sudo apt install sambamba # install sambamba 
+
+sambamba markdup -t <specify number of CPU threads here> -r input_sorted.bam output_dedup.bam 
+
+8. Generating read count matrix/ quantification: - HTSeq, velocyto, stringtie 
+
+# Download human genome annotation file from Ensembl 
+curl -O <insert link here> 
+OR
+wget <insert link here>
+
+# Gunzip the file 
+gunzip /path/to/annotationation_file.gtf.gz 
+
+# Install HTSeq 
+conda install -c bioconda htseq 
+
+# Generate read count matrix using HTSeq 
+htseq-count -f bam -r pos -s no -i gene_id -t exon /path/to/output_deduplicated.bam /path/to/genome_annotation.gtf > exon_counts.txt 
+
+htseq-count -f bam -r pos -s no -i gene_id -t intron /path/to/output_deduplicated.bam /path/to/genome_annotation.gtf > intron_counts.txt 
+
+# In <gene_id>, specify the gene_id from the gtf annotation file 
+
+8. Pre-processing:  - Seurat 
+
+# Install Seurat into R 
+install.packages(“Seurat) 
+
+library(Seurat) 
+
+# Set working directory 
+
+# Load read count matrix file  
+counts_matrix = read.table("counts_matrix.txt", header = TRUE, row.names = 1)  
+
+# Create Seurat object by combining the two files 
+seurat_obj = CreateSeuratObject(counts = counts_matrix, project = "<add project name here")
+
+# Fiter 
+min_genes_per_cell = <add desired value here>   
+min_cells_per_gene = <add desired value here> 
+seurat_obj = subset(seurat_obj, subset = nFeature_RNA > min_genes_per_cell) 
+seurat_obj = subset(seurat_obj, subset = nCount_RNA > min_cells_per_gene) 
+
+# Normalise 
+seurat_obj = NormalizeData(seurat_obj) 
+
+# Identify genes with highest variability 
+seurat_obj = FindVariableFeatures(seurat_obj, selection.method = "vst", nfeatures = 2000) 
+
+# Scale data 
+seurat_obj = Seurat::ScaleData(seurat_obj) 
+
+# Run PCA 
+seurat_obj = RunPCA(seurat_obj) 
+
+# Cluster cells 
+seurat_obj = FindNeighbors(seurat_obj) 
+seurat_obj = FindClusters(seurat_obj) 
+
+# Proceed to advanced analysis 
+
+
+
+
